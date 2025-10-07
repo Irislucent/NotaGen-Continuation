@@ -236,6 +236,25 @@ def safe_convert_abc2xml(**kwargs):
         return convert_abc2xml(**kwargs)
 
 
+def run_interface(input_xml, n_bars_continue, period, composer, instrumentation):
+    abc_content = convert_xml2abc(file_to_convert=input_xml, note_length=8)
+    abc_content_formatted = abc_formatting(abc_content)
+
+    from continuation import inference_patch, read_prompt_abc_str
+
+    result = inference_patch(
+        period,
+        composer,
+        instrumentation,
+        read_prompt_abc_str(
+            abc_content_formatted,
+            n_bars_continue=n_bars_continue,
+        ),
+    )
+
+    return result
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -257,10 +276,44 @@ if __name__ == "__main__":
         required=False,
         help="Number of bars to continue from the input ABC file",
     )
+    parser.add_argument(
+        "-p",
+        "--period",
+        type=str,
+        default="Romantic",
+        required=False,
+        help="Musical period for continuation",
+    )
+    parser.add_argument(
+        "-c",
+        "--composer",
+        type=str,
+        default="Ravel, Maurice",
+        required=False,
+        help="Composer style for continuation",
+    )
+    parser.add_argument(
+        "-m",
+        "--instrumentation",
+        type=str,
+        default="Keyboard",
+        required=False,
+        help="Instrumentation for continuation",
+    )
 
     args = parser.parse_args()
     input_file = args.input_file
     output_dir = args.output_dir
+    n_bars_continue = args.n_bars_continue
+    period = args.period
+    composer = args.composer
+    instrumentation = args.instrumentation
+    if instrumentation != "Keyboard":
+        instrumentation = "Keyboard"
+        print(
+            f"Currently only 'Keyboard' instrumentation is supported. Overriding to 'Keyboard'."
+        )
+
     os.makedirs(output_dir, exist_ok=True)
 
     abc_content = convert_xml2abc(file_to_convert=input_file, note_length=8)
@@ -268,32 +321,13 @@ if __name__ == "__main__":
 
     from continuation import inference_patch, save_and_convert, read_prompt_abc_str
 
-    # safe_convert_abc2xml(
-    #     file_to_convert=abc_content,
-    #     output_directory=output_dir,
-    #     file_to_convert_is_txt=True,
-    # )
-    # os.rename(
-    #     os.path.join(output_dir, "file_from_abc_txt.xml"),
-    #     os.path.join(output_dir, "xml_content.xml"),
-    # )
-    # safe_convert_abc2xml(
-    #     file_to_convert=abc_content_formatted,
-    #     output_directory=output_dir,
-    #     file_to_convert_is_txt=True,
-    # )
-    # os.rename(
-    #     os.path.join(output_dir, "file_from_abc_txt.xml"),
-    #     os.path.join(output_dir, "xml_content_formatted.xml"),
-    # )
-
     result = inference_patch(
-        "Romantic",
-        "Ravel, Maurice",
-        "Keyboard",
+        period,
+        composer,
+        instrumentation,
         read_prompt_abc_str(
             abc_content_formatted,
             n_bars_continue=args.n_bars_continue,
         ),
     )
-    save_and_convert(result, "Romantic", "Ravel, Maurice", "Keyboard")
+    save_and_convert(result, period, composer, instrumentation)

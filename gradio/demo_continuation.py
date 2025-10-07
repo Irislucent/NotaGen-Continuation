@@ -3,7 +3,7 @@ import sys
 import threading
 import queue
 from io import TextIOBase
-from inference import inference_patch
+from continue_from_xml import run_interface
 import datetime
 import subprocess
 import os
@@ -94,7 +94,7 @@ def save_and_convert(abc_content, period, composer, instrumentation):
     return f"Saved successfully: {abc_filename} -> {xml_filename}"
 
 
-def generate_music(period, composer, instrumentation):
+def continue_music(period, composer, instrumentation, input_xml_dd, n_bars_continue):
     if (period, composer, instrumentation) not in valid_combinations:
         raise gr.Error(
             "Invalid prompt combination! Please re-select from the period options"
@@ -108,7 +108,12 @@ def generate_music(period, composer, instrumentation):
 
     def run_inference():
         try:
-            result_container.append(inference_patch(period, composer, instrumentation))
+            result_container.append(
+                run_interface(
+                    input_xml_dd, n_bars_continue, period, composer, instrumentation
+                )
+            )
+
         finally:
             sys.stdout = original_stdout
 
@@ -139,6 +144,15 @@ with gr.Blocks() as demo:
     with gr.Row():
         # 左侧栏
         with gr.Column():
+            input_xml_dd = gr.File(label="Input XML File", file_types=[".xml"])
+            n_bars_continue = gr.Slider(
+                minimum=8,
+                maximum=64,
+                step=4,
+                value=16,
+                label="Number of Bars to Continue",
+            )
+
             period_dd = gr.Dropdown(
                 choices=periods, value=None, label="Period", interactive=True
             )
@@ -149,7 +163,7 @@ with gr.Blocks() as demo:
                 choices=[], value=None, label="Instrumentation", interactive=False
             )
 
-            generate_btn = gr.Button("Generate!", variant="primary")
+            generate_btn = gr.Button("Generate Continuation!", variant="primary")
 
             process_output = gr.Textbox(
                 label="Generation process",
@@ -189,9 +203,10 @@ with gr.Blocks() as demo:
     )
 
     generate_btn.click(
-        generate_music,
-        inputs=[period_dd, composer_dd, instrument_dd],
+        continue_music,
+        inputs=[period_dd, composer_dd, instrument_dd, input_xml_dd, n_bars_continue],
         outputs=[process_output, final_output],
+        api_name=False,
     )
 
     save_btn.click(
