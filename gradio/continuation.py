@@ -1,4 +1,4 @@
-# from inference import inference_patch
+from inference import inference_patch
 import datetime
 import subprocess
 import time
@@ -200,7 +200,7 @@ def rest_unreduce(abc_lines):
     return unreduced_lines
 
 
-def inference_patch(period, composer, instrumentation):
+def inference_patch(period, composer, instrumentation, music_prompt=None):
     prompt_lines = [
         "%" + period + "\n",
         "%" + composer + "\n",
@@ -230,6 +230,17 @@ def inference_patch(period, composer, instrumentation):
         ]
         prompt_patches.insert(0, bos_patch)
 
+        # add music_prompt
+        if music_prompt:
+            music_prompt_patches = patchilizer.encode_generate(music_prompt)[:-1]
+            # prompt_patches = music_prompt_patches
+            # prompt_patches.insert(0, bos_patch)
+            prompt_patches += music_prompt_patches
+
+            music_prompt_lines = music_prompt.split("\n")
+            music_prompt_lines = [x + "\n" for x in music_prompt_lines]
+            byte_list += list("".join(music_prompt_lines))
+
         input_patches = torch.tensor(prompt_patches, device=device).reshape(1, -1)
 
         end_flag = False
@@ -239,30 +250,35 @@ def inference_patch(period, composer, instrumentation):
 
         with torch.inference_mode():
             while True:
-                with torch.autocast(device_type="cuda", dtype=torch.float16):
-                    predicted_patch = model.generate(
-                        input_patches.unsqueeze(0),
-                        top_k=TOP_K,
-                        top_p=TOP_P,
-                        temperature=TEMPERATURE,
-                    )
-                if not tunebody_flag and patchilizer.decode(
-                    [predicted_patch]
-                ).startswith("[r:"):  # 初次进入tunebody，必须以[r:0/开头
-                    tunebody_flag = True
-                    r0_patch = (
-                        torch.tensor([ord(c) for c in "[r:0/"]).unsqueeze(0).to(device)
-                    )
-                    temp_input_patches = torch.concat(
-                        [input_patches, r0_patch], axis=-1
-                    )
-                    predicted_patch = model.generate(
-                        temp_input_patches.unsqueeze(0),
-                        top_k=TOP_K,
-                        top_p=TOP_P,
-                        temperature=TEMPERATURE,
-                    )
-                    predicted_patch = [ord(c) for c in "[r:0/"] + predicted_patch
+                try:
+                    with torch.autocast(device_type="cuda", dtype=torch.float16):
+                        predicted_patch = model.generate(
+                            input_patches.unsqueeze(0),
+                            top_k=TOP_K,
+                            top_p=TOP_P,
+                            temperature=TEMPERATURE,
+                        )
+                except Exception as e:
+                    print("Error stop")
+                    break
+                # if not tunebody_flag and patchilizer.decode(
+                #     [predicted_patch]
+                # ).startswith("[r:"):  # 初次进入tunebody，必须以[r:0/开头
+                # if not tunebody_flag:
+                #     tunebody_flag = True
+                #     r0_patch = (
+                #         torch.tensor([ord(c) for c in "[r:0/"]).unsqueeze(0).to(device)
+                #     )
+                #     temp_input_patches = torch.concat(
+                #         [input_patches, r0_patch], axis=-1
+                #     )
+                #     predicted_patch = model.generate(
+                #         temp_input_patches.unsqueeze(0),
+                #         top_k=TOP_K,
+                #         top_p=TOP_P,
+                #         temperature=TEMPERATURE,
+                #     )
+                #     predicted_patch = [ord(c) for c in "[r:0/"] + predicted_patch
                 if (
                     predicted_patch[0] == patchilizer.bos_token_id
                     and predicted_patch[1] == patchilizer.eos_token_id
@@ -293,50 +309,50 @@ def inference_patch(period, composer, instrumentation):
                     [input_patches, predicted_patch], dim=1
                 )  # (1, 16 * patch_len)
 
-                if len(byte_list) > 102400:
+                if len(byte_list) > 204800:
                     failure_flag = True
                     break
-                if time.time() - start_time > 10 * 60:
-                    failure_flag = True
-                    break
+                # if time.time() - start_time > 10 * 60:
+                #     failure_flag = True
+                #     break
 
-                if input_patches.shape[1] >= PATCH_LENGTH * PATCH_SIZE and not end_flag:
-                    print("Stream generating...")
+                # if input_patches.shape[1] >= PATCH_LENGTH * PATCH_SIZE and not end_flag:
+                #     print("Stream generating...")
 
-                    metadata = "".join(metadata_byte_list)
-                    context_tunebody = "".join(context_tunebody_byte_list)
+                #     metadata = "".join(metadata_byte_list)
+                #     context_tunebody = "".join(context_tunebody_byte_list)
 
-                    if "\n" not in context_tunebody:
-                        break  # Generated content is all metadata, abandon
+                #     if "\n" not in context_tunebody:
+                #         break  # Generated content is all metadata, abandon
 
-                    context_tunebody_liness = context_tunebody.split("\n")
-                    if not context_tunebody.endswith("\n"):
-                        context_tunebody_liness = [
-                            context_tunebody_liness[i] + "\n"
-                            for i in range(len(context_tunebody_liness) - 1)
-                        ] + [context_tunebody_liness[-1]]
-                    else:
-                        context_tunebody_liness = [
-                            context_tunebody_liness[i] + "\n"
-                            for i in range(len(context_tunebody_liness))
-                        ]
+                #     context_tunebody_liness = context_tunebody.split("\n")
+                #     if not context_tunebody.endswith("\n"):
+                #         context_tunebody_liness = [
+                #             context_tunebody_liness[i] + "\n"
+                #             for i in range(len(context_tunebody_liness) - 1)
+                #         ] + [context_tunebody_liness[-1]]
+                #     else:
+                #         context_tunebody_liness = [
+                #             context_tunebody_liness[i] + "\n"
+                #             for i in range(len(context_tunebody_liness))
+                #         ]
 
-                    cut_index = len(context_tunebody_liness) // 2
-                    abc_code_slice = metadata + "".join(
-                        context_tunebody_liness[-cut_index:]
-                    )
+                #     cut_index = len(context_tunebody_liness) // 2
+                #     abc_code_slice = metadata + "".join(
+                #         context_tunebody_liness[-cut_index:]
+                #     )
 
-                    input_patches = patchilizer.encode_generate(abc_code_slice)
+                #     input_patches = patchilizer.encode_generate(abc_code_slice)
 
-                    input_patches = [
-                        item for sublist in input_patches for item in sublist
-                    ]
-                    input_patches = torch.tensor([input_patches], device=device)
-                    input_patches = input_patches.reshape(1, -1)
+                #     input_patches = [
+                #         item for sublist in input_patches for item in sublist
+                #     ]
+                #     input_patches = torch.tensor([input_patches], device=device)
+                #     input_patches = input_patches.reshape(1, -1)
 
-                    context_tunebody_byte_list = list(
-                        "".join(context_tunebody_lines[-cut_index:])
-                    )
+                #     context_tunebody_byte_list = list(
+                #         "".join(context_tunebody_liness[-cut_index:])
+                #     )
 
             if not failure_flag:
                 abc_text = "".join(byte_list)
@@ -347,6 +363,7 @@ def inference_patch(period, composer, instrumentation):
                 abc_lines = [line + "\n" for line in abc_lines]
                 try:
                     unreduced_abc_lines = rest_unreduce(abc_lines)
+                    # unreduced_abc_lines = abc_lines
                 except:
                     failure_flag = True
                     pass
@@ -356,9 +373,57 @@ def inference_patch(period, composer, instrumentation):
                         for line in unreduced_abc_lines
                         if not (line.startswith("%") and not line.startswith("%%"))
                     ]
-                    unreduced_abc_lines = ["X:1\n"] + unreduced_abc_lines
+                    if unreduced_abc_lines[0] == "X:1\n":
+                        pass
+                    else:
+                        unreduced_abc_lines = ["X:1\n"] + unreduced_abc_lines
                     unreduced_abc_text = "".join(unreduced_abc_lines)
                     return unreduced_abc_text
+
+
+def read_prompt_abc_file(abc_path, n_bars_continue=50):
+    with open(abc_path, "r") as f:
+        abc_text = f.readlines()
+    abc_text_expanded = ""
+    # find the first line of [V:]
+    for i, line in enumerate(abc_text):
+        if line.startswith("[V:"):
+            break
+    # compute how many lines are there
+    num_lines_body = len(abc_text) - i
+    # add prefix "[r:36/8]" to these lines
+    for j, line in enumerate(abc_text):
+        if line.startswith("[V:"):
+            abc_text_expanded = (
+                abc_text_expanded
+                + f"[r:{j - i}/{num_lines_body - j + i + n_bars_continue}]{line}"
+            )
+        else:
+            abc_text_expanded = abc_text_expanded + line
+
+    return abc_text_expanded
+
+
+def read_prompt_abc_str(abc_str, n_bars_continue=50):
+    abc_text = abc_str.splitlines(keepends=True)
+    abc_text_expanded = ""
+    # find the first line of [V:]
+    for i, line in enumerate(abc_text):
+        if line.startswith("[V:"):
+            break
+    # compute how many lines are there
+    num_lines_body = len(abc_text) - i
+    # add prefix like "[r:36/8]" to these lines
+    for j, line in enumerate(abc_text):
+        if line.startswith("[V:"):
+            abc_text_expanded = (
+                abc_text_expanded
+                + f"[r:{j - i}/{num_lines_body - j + i + n_bars_continue}]{line}"
+            )
+        else:
+            abc_text_expanded = abc_text_expanded + line
+
+    return abc_text_expanded
 
 
 def save_and_convert(abc_content, period, composer, instrumentation):
@@ -392,6 +457,13 @@ def save_and_convert(abc_content, period, composer, instrumentation):
 
 
 if __name__ == "__main__":
-    for i in range(20):
-        rslt = inference_patch("Romantic", "Debussy, Claude", "Keyboard")
-        save_and_convert(rslt, "Romantic", "Debussy, Claude", "Keyboard")
+    result = inference_patch(
+        "Romantic",
+        "Ravel, Maurice",
+        "Keyboard",
+        read_prompt_abc(
+            "/home/yuxuan.wu/NotaGen/JD_1_cleaned.abc",  # right hand
+            n_bars_continue=20,
+        ),
+    )
+    save_and_convert(result, "Romantic", "Ravel, Maurice", "Keyboard")

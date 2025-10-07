@@ -64,11 +64,11 @@ def save_and_convert(abc_content, period, composer, instrumentation):
     prompt_str = f"{period}_{composer}_{instrumentation}"
     filename_base = f"{timestamp}_{prompt_str}"
     
-    abc_filename = f"{filename_base}.abc"
+    abc_filename = f"generated/{filename_base}.abc"
     with open(abc_filename, "w", encoding="utf-8") as f:
         f.write(abc_content)
 
-    xml_filename = f"{filename_base}.xml"
+    xml_filename = f"generated/{filename_base}.xml"
     try:
         subprocess.run(
             ["python", "abc2xml.py", '-o', '.', abc_filename, ],
@@ -232,5 +232,6 @@ if __name__ == "__main__":
 
     demo.launch(
         server_name="0.0.0.0",
-        server_port=7861
+        server_port=7861,
+        share=True
     )
