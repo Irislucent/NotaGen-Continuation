@@ -1,4 +1,4 @@
-from inference import inference_patch
+# from inference import inference_patch
 import datetime
 import subprocess
 import time

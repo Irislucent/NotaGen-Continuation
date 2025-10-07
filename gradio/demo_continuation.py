@@ -78,7 +78,7 @@ def save_and_convert(abc_content, period, composer, instrumentation):
                 "python",
                 "abc2xml.py",
                 "-o",
-                ".",
+                "./generated/",
                 abc_filename,
             ],
             check=True,
@@ -144,7 +144,9 @@ with gr.Blocks() as demo:
     with gr.Row():
         # 左侧栏
         with gr.Column():
-            input_xml_dd = gr.File(label="Input XML File", file_types=[".xml"])
+            input_xml_dd = gr.File(
+                label="Input XML File", file_types=[".xml", ".musicxml"]
+            )
             n_bars_continue = gr.Slider(
                 minimum=8,
                 maximum=64,
